@@ -62,16 +62,15 @@ jobs:
           sudo apt install -y ansible
 
       #############################
-      # 8. Save EC2 SSH Key (FIXED)
+      # 8. Save EC2 SSH Key
       #############################
-      - name: - name: Save SSH private key
+      - name: Save SSH private key
         shell: bash
         run: |
           mkdir -p ansible/keys
           echo "${{ secrets.EC2_SSH_KEY }}" > ansible/keys/main-static-key.pem
           sed -i 's/\r$//' ansible/keys/main-static-key.pem
           chmod 600 ansible/keys/main-static-key.pem
-
 
       #############################
       # 9. Run Ansible Playbook
