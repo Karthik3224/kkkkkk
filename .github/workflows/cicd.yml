@@ -71,14 +71,21 @@ jobs:
           sudo apt install -y ansible
 
       #############################
-      # 9. Save EC2 SSH Key
+      # 9. Save EC2 SSH Key (Fixed for Windows/Linux)
       #############################
       - name: Save SSH private key
         shell: bash
         run: |
+          # Create keys folder if it doesn't exist
           mkdir -p ansible/keys
+          
+          # Save private key from GitHub Secrets
           echo "${{ secrets.EC2_SSH_KEY }}" > ansible/keys/main-static-key.pem
+          
+          # Remove Windows line endings if any
           sed -i 's/\r$//' ansible/keys/main-static-key.pem
+          
+          # Set proper permissions
           chmod 600 ansible/keys/main-static-key.pem
 
       #############################
@@ -89,10 +96,13 @@ jobs:
         run: |
           echo "Using PUBLIC_IP=$PUBLIC_IP"
 
+          # Create inventory file
           echo "[web]" > inventory.ini
           echo "$PUBLIC_IP ansible_user=ubuntu ansible_ssh_private_key_file=$(pwd)/keys/main-static-key.pem" >> inventory.ini
 
+          # Debug inventory
           cat inventory.ini
 
+          # Run playbook
           ansible-playbook -i inventory.ini playbook.yml \
             --ssh-extra-args="-o StrictHostKeyChecking=no"
