@@ -10,99 +10,101 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      #############################
-      # 1. Checkout Repo
-      #############################
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+    #####################################
+    # 1. Checkout Repository
+    #####################################
+    - name: Checkout Repo
+      uses: actions/checkout@v4
 
-      #############################
-      # 2. Configure AWS Credentials
-      #############################
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-1
+    #####################################
+    # 2. Configure AWS Credentials
+    #####################################
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-southeast-1
 
-      #############################
-      # 3. Setup Terraform
-      #############################
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+    #####################################
+    # 3. Setup Terraform
+    #####################################
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
 
-      #############################
-      # 4. Clean Terraform Cache (Fix Duplicate SG issue)
-      #############################
-      - name: Clean Terraform Cache
-        working-directory: terraform
-        run: |
-          rm -rf .terraform
-          rm -f .terraform.lock.hcl
+    #####################################
+    # 4. Clean Terraform Cache
+    #####################################
+    - name: Clean Terraform Cache
+      working-directory: terraform
+      run: |
+        rm -rf .terraform
+        rm -f .terraform.lock.hcl
 
-      #############################
-      # 5. Terraform Init
-      #############################
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init
+    #####################################
+    # 5. Terraform Init
+    #####################################
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
 
-      #############################
-      # 6. Terraform Apply
-      #############################
-      - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve
+    #####################################
+    # 6. Terraform Apply
+    #####################################
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve
 
-      #############################
-      # 7. Get Public IP
-      #############################
-      - name: Get Public IP
-        working-directory: terraform
-        run: echo "PUBLIC_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+    #####################################
+    # 7. Fetch EC2 Public IP
+    #####################################
+    - name: Get Public IP
+      working-directory: terraform
+      run: |
+        echo "PUBLIC_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
 
-      #############################
-      # 8. Install Ansible
-      #############################
-      - name: Install Ansible
-        run: |
-          sudo apt update
-          sudo apt install -y ansible
+    #####################################
+    # 8. Install Ansible
+    #####################################
+    - name: Install Ansible
+      run: |
+        sudo apt update
+        sudo apt install -y ansible
 
-      #############################
-      # 9. Save EC2 SSH Key (Fixed for Windows/Linux)
-      #############################
-      - name: Save SSH private key
-        shell: bash
-        run: |
-          # Create keys folder if it doesn't exist
-          mkdir -p ansible/keys
-          
-          # Save private key from GitHub Secrets
-          echo "${{ secrets.EC2_SSH_KEY }}" > ansible/keys/main-static-key.pem
-          
-          # Remove Windows line endings if any
-          sed -i 's/\r$//' ansible/keys/main-static-key.pem
-          
-          # Set proper permissions
-          chmod 600 ansible/keys/main-static-key.pem
+    #####################################
+    # 9. Save EC2 SSH Private Key
+    #####################################
+    - name: Save SSH key
+      run: |
+        mkdir -p ansible/keys
+        echo "${{ secrets.EC2_SSH_KEY }}" > ansible/keys/main-static-key.pem
+        sed -i 's/\r$//' ansible/keys/main-static-key.pem
+        chmod 600 ansible/keys/main-static-key.pem
 
-      #############################
-      # 10. Run Ansible Playbook
-      #############################
-      - name: Run Ansible Playbook
-        working-directory: ansible
-        run: |
-          echo "Using PUBLIC_IP=$PUBLIC_IP"
+    #####################################
+    # 10. SSH Connectivity Test
+    #####################################
+    - name: Test SSH connection
+      run: |
+        ssh -i ansible/keys/main-static-key.pem \
+            -o StrictHostKeyChecking=no \
+            ubuntu@$PUBLIC_IP "uptime"
 
-          # Create inventory file
-          echo "[web]" > inventory.ini
-          echo "$PUBLIC_IP ansible_user=ubuntu ansible_ssh_private_key_file=$(pwd)/keys/main-static-key.pem" >> inventory.ini
+    #####################################
+    # 11. Create Ansible Inventory
+    #####################################
+    - name: Create inventory
+      working-directory: ansible
+      run: |
+        echo "[web]" > inventory.ini
+        echo "$PUBLIC_IP ansible_user=ubuntu ansible_ssh_private_key_file=$(pwd)/keys/main-static-key.pem" >> inventory.ini
+        cat inventory.ini
 
-          # Debug inventory
-          cat inventory.ini
-
-          # Run playbook
-          ansible-playbook -i inventory.ini playbook.yml \
-            --ssh-extra-args="-o StrictHostKeyChecking=no"
+    #####################################
+    # 12. Run Ansible Playbook
+    #####################################
+    - name: Run Ansible Playbook
+      working-directory: ansible
+      run: |
+        ansible-playbook -i inventory.ini playbook.yml \
+          --ssh-extra-args="-o StrictHostKeyChecking=no"
